@@ -42,18 +42,16 @@ mkdir -p "$ROOT"
 for ((i = 0 ; i < "${#urls[@]}" ; i++))
 do
   url="${urls[i]}"
-  out="$ROOT/$(slugify "$url")"
-  printf "reading [%d/%d] %s\n-> %s\n" \
-    $((i+1))                           \
-    "${#urls[@]}"                      \
-    "$url"                             \
-    "$out"
+  printf "reading [%d/%d] %s\n" \
+    $((i+1))                    \
+    "${#urls[@]}"               \
+    "$url"
 
   fresh=$(gallery-dl --get-urls "$url" 2>/dev/null)
 
   if [[ $? != 0 ]]
   then
-    printf "Error reading %s. Skipping\n" "$url"
+    printf "Read error '%s' (skipping)\n" "$url" 1>&2
     continue
   fi
 
@@ -61,6 +59,7 @@ do
   fresh=$(echo "$fresh" | LC_COLLATE=C sort -ru)
   printf ' (%d unique)' "$(echo "$fresh" | wc -l)"
 
+  out="$ROOT/$(slugify "$url")"
   if [ -f "$out" ]
   then
     fresh=$(
@@ -79,13 +78,13 @@ do
     fresh=$(echo "$fresh" | grep "$FILTER")
   fi
 
-  echo
+  printf "\n-> %s\n" "$out"
   echo "$fresh" > "$out"
   files+=("$out")
 done
 
 skipped=$(( ${#urls[@]} - ${#files[@]} ))
-[[ $skipped > 0 ]] && printf "Skipped %d urls\n" "$skipped"
+[[ $skipped > 0 ]] && printf "Skipped %d urls\n" "$skipped" 1>&2
 
 total=0
 attempted=0
