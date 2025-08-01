@@ -48,7 +48,7 @@ do
     "$url"                             \
     "$out"
 
-  fresh=$(gallery-dl --get-urls "$url")
+  fresh=$(gallery-dl --get-urls "$url" 2>/dev/null)
   printf 'found %d urls' "$(echo "$fresh" | wc -l)"
   fresh=$(echo "$fresh" | LC_COLLATE=C sort -u)
   printf ' (%d unique)' "$(echo "$fresh" | wc -l)"
