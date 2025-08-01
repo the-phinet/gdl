@@ -1,6 +1,6 @@
 #!/bin/bash
 
-HEADER="## $(basename "$0") $@"
+COMMAND="$(basename "$0") $@"
 
 ROOT="$HOME/.config/gallery-dl/downloads"
 ARGS=("--download-archive" "$HOME/.config/gallery-dl/log")
@@ -50,20 +50,20 @@ do
 
   fresh=$(gallery-dl --get-urls "$url" 2>/dev/null)
   printf 'found %d urls' "$(echo "$fresh" | wc -l)"
-  fresh=$(echo "$fresh" | LC_COLLATE=C sort -u)
+  fresh=$(echo "$fresh" | LC_COLLATE=C sort -ru)
   printf ' (%d unique)' "$(echo "$fresh" | wc -l)"
 
   if [ -f "$out" ]
   then
     fresh=$(
       diff --normal                                             \
-        <(grep "^# " "$out" | cut -c 3- | LC_COLLATE=C sort -u) \
+        <(grep "^# " "$out" | cut -c 3- | LC_COLLATE=C sort -ru) \
         <(echo "$fresh")                                        \
       | grep "^> " | cut -c 3-                                  \
     )
     printf ' (%d added)' $(echo "$fresh" | wc -l)
 
-    fresh=$(cat <(grep -v "^## " "$out") <(echo "$fresh") | LC_COLLATE=C sort -u)
+    fresh=$(cat <(grep -v "^##" "$out") <(echo "$fresh") | LC_COLLATE=C sort -ru)
   fi
 
   if [ ! -z "$FILTER" ]
@@ -72,8 +72,7 @@ do
   fi
 
   echo
-  echo "$HEADER" >"$out"
-  echo "$fresh" >>"$out"
+  echo "$fresh" > "$out"
   data[$i]="$out"
 done
 
@@ -91,7 +90,7 @@ do
   _total=$(cat "$urls" | wc -l)
   _attempted=$(grep "^# " -v "$urls" | wc -l)
 
-  gallery-dl "${ARGS[@]}" "${args[@]}" --input-file-comment "$urls"
+  [[ -z "$DEBUG" ]] && gallery-dl "${ARGS[@]}" "${args[@]}" --input-file-comment "$urls"
 
   _failed=$(grep "^# " -v "$urls" | wc -l)
 
@@ -103,7 +102,10 @@ do
     "$_failed"                                                 \
     "$urls"
 
-  LC_COLLATE=C sort -u "$urls" | sponge "$urls"
+  cat \
+    <(printf "##\n## %s\n##\n" "$COMMAND") \
+    <(LC_COLLATE=C sort -ru "$urls") \
+  | sponge "$urls"
 
   ((attempted+=_attempted))
   ((total+=_total))
