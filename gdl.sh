@@ -17,7 +17,8 @@ require sort
 require sponge
 
 args=()
-data=()
+urls=()
+files=()
 
 i=0
 while [[ $# > 0 ]]
@@ -25,8 +26,8 @@ do
   ((i++))
   if [[ "$1" =~ http* ]]
   then
-    data+=("$1")
-  elif [[ "${#data[@]}" != 0 ]]
+    urls+=("$1")
+  elif [[ "${#urls[@]}" != 0 ]]
   then
     printf "Args #%d '%s' : URLS must not precede ARGS\n" "$i" "$1" >&2
     exit 1
@@ -38,17 +39,24 @@ done
 
 mkdir -p "$ROOT"
 
-for ((i = 0 ; i < "${#data[@]}" ; i++))
+for ((i = 0 ; i < "${#urls[@]}" ; i++))
 do
-  url="${data[i]}"
+  url="${urls[i]}"
   out="$ROOT/$(slugify "$url")"
   printf "reading [%d/%d] %s\n-> %s\n" \
     $((i+1))                           \
-    "${#data[@]}"                      \
+    "${#urls[@]}"                      \
     "$url"                             \
     "$out"
 
   fresh=$(gallery-dl --get-urls "$url" 2>/dev/null)
+
+  if [[ $? != 0 ]]
+  then
+    printf "Error reading %s. Skipping\n" "$url"
+    continue
+  fi
+
   printf 'found %d urls' "$(echo "$fresh" | wc -l)"
   fresh=$(echo "$fresh" | LC_COLLATE=C sort -ru)
   printf ' (%d unique)' "$(echo "$fresh" | wc -l)"
@@ -73,39 +81,42 @@ do
 
   echo
   echo "$fresh" > "$out"
-  data[$i]="$out"
+  files+=("$out")
 done
+
+skipped=$(( ${#urls[@]} - ${#files[@]} ))
+[[ $skipped > 0 ]] && printf "Skipped %d urls\n" "$skipped"
 
 total=0
 attempted=0
 failed=0
-for ((i = 0 ; i < "${#data[@]}" ; i++))
+for ((i = 0 ; i < "${#files[@]}" ; i++))
 do
-  urls="${data[i]}"
+  list="${files[i]}"
   printf "downloading [%d/%d] %s\n" \
     $((i+1))                        \
-    "${#data[@]}"                   \
-    "$urls"
+    "${#files[@]}"                  \
+    "$list"
 
-  _total=$(cat "$urls" | wc -l)
-  _attempted=$(grep "^# " -v "$urls" | wc -l)
+  _total=$(cat "$list" | wc -l)
+  _attempted=$(grep "^# " -v "$list" | wc -l)
 
-  [[ -z "$DEBUG" ]] && gallery-dl "${ARGS[@]}" "${args[@]}" --input-file-comment "$urls"
+  [[ -z "$DEBUG" ]] && gallery-dl "${ARGS[@]}" "${args[@]}" --input-file-comment "$list"
 
-  _failed=$(grep "^# " -v "$urls" | wc -l)
+  _failed=$(grep "^# " -v "$list" | wc -l)
 
   printf "progress [%d/%d] urls %d (%d tried, %d failed) %s\n" \
     $((i+1))                                                   \
-    "${#data[@]}"                                              \
+    "${#files[@]}"                                             \
     "$_total"                                                  \
     "$_attempted"                                              \
     "$_failed"                                                 \
-    "$urls"
+    "$list"
 
   cat \
     <(printf "##\n## %s\n##\n" "$COMMAND") \
-    <(LC_COLLATE=C sort -ru "$urls") \
-  | sponge "$urls"
+    <(LC_COLLATE=C sort -ru "$list") \
+  | sponge "$list"
 
   ((attempted+=_attempted))
   ((total+=_total))
