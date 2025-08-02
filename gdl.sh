@@ -37,8 +37,6 @@ then
   | jq > "$CONFIG"
 fi
 
-file=~/.config/gallery-dl/downloads/test
-
 config=$(jq ".tools.gdl // {}" <"$CONFIG" 2>/dev/null)
 readarray -t filters < <(jq -r "(.filter // [])[]" <<<"$config")
 
@@ -109,9 +107,9 @@ do
     continue
   fi
 
-  printf 'found %d urls' "$(echo "$fresh" | wc -l)"
+  printf 'found %d urls' "$(awk 'END {print NR}' <<<"$fresh")"
   fresh=$(echo "$fresh" | LC_COLLATE=C sort -ru)
-  printf ' (%d unique)' "$(echo "$fresh" | wc -l)"
+  printf ' (%d unique)' "$(awk 'END {print NR}' <<<"$fresh")"
 
   out="$ROOT/$(slugify "$url")"
   if [ -f "$out" ]
@@ -156,12 +154,12 @@ do
     "${#files[@]}"                  \
     "$list"
 
-  _total=$(cat "$list" | wc -l)
-  _attempted=$(grep "^# " -v "$list" | wc -l)
+  _total=$(wc -l < "$list")
+  _attempted=$(grep -c "^# " -v "$list")
 
   [[ -z "$DEBUG" ]] && gallery-dl "${ARGS[@]}" "${args[@]}" --input-file-comment "$list"
 
-  _failed=$(grep "^# " -v "$list" | wc -l)
+  _failed=$(grep -c "^# " -v "$list")
 
   printf "progress [%d/%d] urls %d (%d tried, %d failed) %s\n" \
     $((i+1))                                                   \
