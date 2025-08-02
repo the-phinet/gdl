@@ -2,19 +2,73 @@
 
 COMMAND="$(basename "$0") $@"
 
-ROOT="$HOME/.config/gallery-dl/downloads"
-ARGS=("--download-archive" "$HOME/.config/gallery-dl/log")
+GALLERYDL="$HOME/.config/gallery-dl"
+CONFIG="$GALLERYDL/config.json"
+ROOT="$GALLERYDL/downloads"
+ARGS=("--download-archive" "$GALLERYDL/log")
 
 function require() {
-  which $1 &> /dev/null && return
-  printf "%s required!\n" "$1" >&2
-  exit 1
+  failed=0
+  for cmd in "$@"
+  do
+    if ! which "$cmd" &> /dev/null
+    then
+      printf "%s required!\n" "$cmd" >&2
+      ((failed+=1))
+    fi
+  done
+  return $failed
 }
 
-require gallery-dl
-require slugify
-require sort
-require sponge
+require      \
+  gallery-dl \
+  slugify    \
+  sort       \
+  sponge     \
+  jq         \
+  awk        \
+  sed        \
+|| exit
+
+if ! [ -f "$CONFIG" ]
+then
+  mkdir -p "$GALLERYDL"
+  echo '{"extractor":{},"downloader":{},"output":{},"postprocessor":{}}' \
+  | jq > "$CONFIG"
+fi
+
+file=~/.config/gallery-dl/downloads/test
+
+config=$(jq ".tools.gdl // {}" <"$CONFIG" 2>/dev/null)
+readarray -t filters < <(jq -r "(.filter // [])[]" <<<"$config")
+
+[ -z "$FILTER" ] || filters+=("$FILTER")
+
+pattern=$(printf "(%s)|" "${filters[@]}")
+pattern=$(<<<"${pattern%|}" sed 's;\\;\\\\;g')
+
+tempfile=$(mktemp)
+trap 'rm -f "$tempfile"' EXIT
+
+awk_filter_code='
+  BEGIN {
+    old = 0; fail = 0; pass = 0
+  }
+  {
+    if ($0 ~ /^# /) {
+      old++
+    } else if (p != "" && $0 ~ p) {
+      fail++
+      $0 = "# " $0
+    } else {
+      pass++
+    }
+    print $0
+  }
+  END {
+    printf "%d %d %d", old, fail, pass > "/dev/stderr"
+  }
+'
 
 args=()
 urls=()
@@ -68,17 +122,22 @@ do
         <(echo "$fresh")                                        \
       | grep "^> " | cut -c 3-                                  \
     )
-    printf ' (%d added)' $(echo "$fresh" | wc -l)
 
     fresh=$(cat <(grep -v "^##" "$out") <(echo "$fresh") | LC_COLLATE=C sort -ru)
   fi
 
-  if [ ! -z "$FILTER" ]
-  then
-    fresh=$(echo "$fresh" | grep "$FILTER")
-  fi
+  fresh=$(awk -v p="$pattern" "$awk_filter_code" <<<"$fresh" 2> "$tempfile")
+  stats=( $( <"$tempfile" ) )
+  skip_old=${stats[0]}
+  skip_new=${stats[1]}
+  added=${stats[2]}
 
-  printf "\n-> %s\n" "$out"
+  [[ $skip_old > 0 ]] && printf " (%d skipped)"  "$skip_old"
+  [[ $skip_new > 0 ]] && printf " (%d filtered)" "$skip_new"
+
+  [[ $added == 0 ]] && printf "Nothing to do. (skipping)\n" && continue
+
+  printf " (%d added)\n-> %s\n" "$added" "$out"
   echo "$fresh" > "$out"
   files+=("$out")
 done
